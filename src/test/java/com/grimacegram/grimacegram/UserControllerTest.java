@@ -1,7 +1,8 @@
 package com.grimacegram.grimacegram;
 
-import com.grimacegram.grimacegram.model.User;
-import com.grimacegram.grimacegram.repository.UserRepository;
+import com.grimacegram.grimacegram.error.ApiError;
+import com.grimacegram.grimacegram.user.model.User;
+import com.grimacegram.grimacegram.user.repository.UserRepository;
 import com.grimacegram.grimacegram.shared.GenericResponse;
 import org.junit.Before;
 import org.junit.Test;
@@ -15,6 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -178,6 +180,67 @@ public class UserControllerTest {
         ResponseEntity<Object> response = testRestTemplate.postForEntity(API_1_0_USERS, user, Object.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
+    @Test
+    public void postUser_whenUserIsInvalid_receiveApiError(){
+        User user = new User();
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        assertThat(response.getBody().getUrl()).isEqualTo(API_1_0_USERS);
+    }
+    @Test
+    public void postUser_whenUserIsInvalid_receiveApiErrorWithValidationErrors(){
+        User user = new User();
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        assertThat(response.getBody().getValidationErrors().size()).isEqualTo(3);
+    }
+    @Test
+    public void postUser_whenUserHasNullUsername_receiveMessageOfNullErrorForUsername(){
+        User user = createValidUser();
+        user.setUsername(null);
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        Map<String, String> validationErrors = response.getBody().getValidationErrors();
+        assertThat(validationErrors.get("username")).isEqualTo("Username cannot be null");
+    }
+    @Test
+    public void postUser_whenUserHasNullPassword_receiveGenericMessageOfNullError(){
+        User user = createValidUser();
+        user.setPassword(null);
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        Map<String, String> validationErrors = response.getBody().getValidationErrors();
+        assertThat(validationErrors.get("password")).isEqualTo("Password cannot be null");
+    }
+    @Test
+    public void postUser_whenUserHasInvalidLengthUsername_receiveGenericMessageOfSizeError(){
+        User user = createValidUser();
+        user.setUsername("asd");
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        Map<String, String> validationErrors = response.getBody().getValidationErrors();
+        assertThat(validationErrors.get("username")).isEqualTo("It must have minimum 4 and maximum 255 characters");
+    }
+    @Test
+    public void postUser_whenUserHasInvalidPasswordPattern_receiveMessageOfPasswordPatternError(){
+        User user = createValidUser();
+        user.setPassword("alllowercase");
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        Map<String, String> validationErrors = response.getBody().getValidationErrors();
+        assertThat(validationErrors.get("password")).isEqualTo("Password musthave at least one uppercase" +
+                ", one lowercase letter and one number");
+    }
+    @Test
+    public void postUser_whenAnotherHasSameUsername_receiveBadRequest(){
+        userRepository.save(createValidUser());
+        User user = createValidUser();
 
+        ResponseEntity<Object> response = testRestTemplate.postForEntity(API_1_0_USERS, user, Object.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+    @Test
+    public void postUser_whenAnotherHasSameUsername_receiveMessageOfDuplicateUsername(){
+        userRepository.save(createValidUser());
+        User user = createValidUser();
+
+        ResponseEntity<ApiError> response = testRestTemplate.postForEntity(API_1_0_USERS, user, ApiError.class);
+        Map<String, String> validationErrors = response.getBody().getValidationErrors();
+        assertThat(validationErrors.get("username")).isEqualTo("This name is in use");
+    }
 
 }
